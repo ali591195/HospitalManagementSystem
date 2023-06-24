@@ -1,19 +1,19 @@
-const Sequelize = require('sequelize');
+const {Sequelize, DataTypes} = require('sequelize');
 const sequelize = require('../startup/database');
 
-const Nurse = sequelize.define('Nurse', {
-    nurseId: {
-        type: Sequelize.INTEGER,
+module.exports = sequelize.define('nurse', {
+    id: {
+        type: DataTypes.UUID,
         primaryKey: true,
-        autoIncrement: true
+        unique: true
     },
-    cnic: {
-        type: Sequelize.STRING,
+    staff_id: {
+        type: DataTypes.UUID,
         allowNull: false,
         unique: true,
         references: {
-            model: 'Persons',
-            key: 'cnic'
+            model: 'staff',
+            key: 'id'
         }
     },
 });

@@ -1,37 +1,37 @@
-const Sequelize = require('sequelize');
+const {Sequelize, DataTypes} = require('sequelize');
 const sequelize = require('../startup/database');
 
-const Patient = sequelize.define('Patient', {
-    patientId: {
-        type: Sequelize.INTEGER,
+module.exports = sequelize.define('patient', {
+    id: {
+        type: DataTypes.UUID,
         primaryKey: true,
-        autoIncrement: true
+        unique: true
     },
-    cnic: {
-        type: Sequelize.STRING,
+    person_id: {
+        type: DataTypes.UUID,
         allowNull: false,
         unique: true,
         references: {
-            model: 'Persons',
-            key: 'cnic'
+            model: 'person',
+            key: 'id'
         }
     },
-    admittedDate: {
-        type: Sequelize.DATEONLY,
+    ward_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+        references: {
+            model: 'ward',
+            key: 'id'
+        }
+    },
+    admit_date: {
+        type: DataTypes.DATEONLY,
         allowNull: false
     },
+    release_date: DataTypes.DATEONLY,
     sickness: {
-        type: Sequelize.ARRAY(Sequelize.STRING),
+        type: DataTypes.STRING(255),
         allowNull: false
     },
-    medications: {
-        type: Sequelize.ARRAY(Sequelize.STRING),
-    },
-    allergies: {
-        type: Sequelize.ARRAY(Sequelize.STRING),
-    },
-    isDischarged: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: false
-    }
+    medication: DataTypes.STRING(255),
 });

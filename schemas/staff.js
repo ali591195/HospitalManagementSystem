@@ -1,37 +1,35 @@
-const Sequelize = require('sequelize');
+const {Sequelize, DataTypes} = require('sequelize');
 const sequelize = require('../startup/database');
 
-const Staff = sequelize.define('Staff', {
-    cnic: {
-        type: Sequelize.STRING,
-        allowNull: false,
+module.exports = sequelize.define('staff', {
+    id: {
+        type: DataTypes.UUID,
         primaryKey: true,
+        unique: true
+    },
+    person_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
         unique: true,
         references: {
-            model: 'Persons',
-            key: 'cnic'
+            model: 'person',
+            key: 'id'
         }
     },
     post: {
-        type: Sequelize.STRING,
+        type: DataTypes.STRING(50),
         allowNull: false
     },
-    joinedDate: {
-        type: Sequelize.DATEONLY,
+    joined_date: {
+        type: DataTypes.DATEONLY,
         allowNull: false
     },
     salary: {
-        type: Sequelize.NUMBER,
+        type: DataTypes.DECIMAL(9, 2),
         allowNull: false
     },
     shift: {
-        type: Sequelize.STRING,
+        type: DataTypes.STRING(2),
         allowNull: false,
-        validate: {
-            len: {
-                args: [3],
-                msg: "Write atleast three characters"
-            }
-        }
     }
 });

@@ -1,23 +1,23 @@
 const {Sequelize, DataTypes} = require('sequelize');
 const sequelize = require('../startup/database');
 
-module.exports = sequelize.define('doctor', {
-    id: {
+module.exports = sequelize.define('patient_allergy_assignment', {
+    patient_id: {
         type: DataTypes.UUID,
         primaryKey: true,
-        unique: true
-    },
-    staff_id: {
-        type: DataTypes.UUID,
         allowNull: false,
-        unique: true,
         references: {
-            model: 'staff',
+            model: 'patient',
             key: 'id'
         }
     },
-    specialty: {
-        type: DataTypes.STRING(255),
-        allowNull: false
+    allergy_id: {
+        type: DataTypes.UUID,
+        primaryKey: true,
+        allowNull: false,
+        references: {
+            model: 'allergy',
+            key: 'id'
+        }
     }
 });

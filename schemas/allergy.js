@@ -1,8 +1,8 @@
 const {Sequelize, DataTypes} = require('sequelize');
 const sequelize = require('../startup/database');
 
-module.exports = sequelize.define('ward', {
-    ward_id: {
+module.exports = sequelize.define('allergy', {
+    id: {
         type: DataTypes.UUID,
         primaryKey: true,
         unique: true
@@ -10,9 +10,5 @@ module.exports = sequelize.define('ward', {
     name: {
         type: DataTypes.STRING(50),
         allowNull: false
-    },
-    capacity: {
-        type: DataTypes.SMALLINT,
-        allowNull: false
     }
-});
+})
