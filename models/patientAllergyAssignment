@@ -6,8 +6,13 @@ module.exports = sequelize.define('patient_allergy_assignment', {
         type: DataTypes.UUID,
         primaryKey: true,
         allowNull: false,
+        validate: {
+            isUUID: 4,
+            notNull: true,
+            notEmpty: true
+        },
         references: {
-            model: 'patient',
+            model: 'patients',
             key: 'id'
         }
     },
@@ -15,9 +20,17 @@ module.exports = sequelize.define('patient_allergy_assignment', {
         type: DataTypes.UUID,
         primaryKey: true,
         allowNull: false,
+        validate: {
+            isUUID: 4,
+            notNull: true,
+            notEmpty: true
+        },
         references: {
-            model: 'allergy',
+            model: 'allergies',
             key: 'id'
         }
     }
-});
+}, {
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  });

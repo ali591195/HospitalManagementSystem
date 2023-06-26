@@ -6,8 +6,13 @@ module.exports = sequelize.define('staff_ward_assignment', {
         type: DataTypes.UUID,
         primaryKey: true,
         allowNull: false,
+        validate: {
+            isUUID: 4,
+            notNull: true,
+            notEmpty: true
+        },
         references: {
-            model: 'staff',
+            model: 'staffs',
             key: 'id'
         }
     },
@@ -15,9 +20,17 @@ module.exports = sequelize.define('staff_ward_assignment', {
         type: DataTypes.UUID,
         primaryKey: true,
         allowNull: false,
+        validate: {
+            isUUID: 4,
+            notNull: true,
+            notEmpty: true
+        },
         references: {
-            model: 'ward',
+            model: 'wards',
             key: 'id'
         }
     }
-});
+}, {
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  });
