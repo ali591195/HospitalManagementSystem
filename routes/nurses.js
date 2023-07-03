@@ -37,6 +37,7 @@ router.put('/:id', validate(putValidator), async (req, res) => {
         }, { where: { id: staff.id } ,transaction: t });
         await t.commit();
 
+        if (obj.assignedPatients) await staff.addPatients(obj.assignedPatients);
         if (obj.assignedDoctors) await nurse.addDoctors(obj.assignedDoctors);
         if (obj.assignedWards) await staff.addWards(obj.assignedWards);
         
@@ -75,13 +76,14 @@ router.put('/:id', validate(putValidator), async (req, res) => {
                 raw: true
         });
         
+        const patients = await staff.getPatients();
+        updatedNurse.assignedPatients = patients.map(patient => patient.id);
         const doctors = await nurse.getDoctors();
         updatedNurse.assignedNurses = doctors.map(doctor => doctor.id);
         const wards = await staff.getWards();
         updatedNurse.assignedWards = wards.map(ward => ward.id);
 
         res.send(updatedNurse);
-        
     } catch(err) {
         await t.rollback();
         console.error(err);
@@ -132,6 +134,8 @@ router.delete('/:id', async (req, res) => {
                 raw: true
         });
 
+        const patients = await staff.getPatients();
+        deletedNurse.assignedPatients = patients.map(patient => patient.id);
         const doctors = await nurse.getDoctors();
         deletedNurse.assignedNurses = doctors.map(doctor => doctor.id);
         const wards = await staff.getWards();
@@ -195,6 +199,8 @@ router.get('/:id', async (req, res) => {
             raw: true
     });
 
+    const patients = await staff.getPatients();
+    nurseRecord.assignedPatients = patients.map(patient => patient.id);
     const doctors = await nurse.getDoctors();
     nurseRecord.assignedNurses = doctors.map(doctor => doctor.id);
     const wards = await staff.getWards();
@@ -233,6 +239,7 @@ router.post('/', validate(postValidator), async (req, res) => {
         }, { transaction: t });
         await t.commit();
 
+        if (obj.assignedPatients) await staff.addPatients(obj.assignedPatients);
         if (obj.assignedDoctors) await nurse.addDoctors(obj.assignedDoctors);
         if (obj.assignedWards) await staff.addWards(obj.assignedWards);
         
@@ -273,6 +280,8 @@ router.post('/', validate(postValidator), async (req, res) => {
                 raw: true
         });
 
+        const patients = await staff.getPatients();
+        createdNurse.assignedPatients = patients.map(patient => patient.id);
         const doctors = await nurse.getDoctors();
         createdNurse.assignedNurses = doctors.map(doctor => doctor.id);
         const wards = await staff.getWards();
@@ -334,7 +343,9 @@ router.get('/', async (req, res) => {
             const assignedWards = wards.map(ward => ward.id);
             const doctors = await nurseInstance.getDoctors();
             const assignedDoctors = doctors.map(doctor => doctor.id);
-            return { ...nurse, assignedDoctors, assignedWards };
+            const patients = await staff.getPatients();
+            const assignedPatients = patients.map(patient => patient.id);
+            return { ...nurse, assignedPatients, assignedDoctors, assignedWards };
         })
     );
     res.send(nursesWithWards);
