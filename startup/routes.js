@@ -1,3 +1,4 @@
+const allergies = require('../routes/allergies');
 const patients = require('../routes/patients');
 const doctors = require('../routes/doctors');
 const nurses = require('../routes/nurses');
@@ -15,4 +16,5 @@ module.exports = function(app){
     app.use('/api/nurses', nurses);
     app.use('/api/doctors', doctors);
     app.use('/api/patients', patients);
+    app.use('/api/allergies', allergies);
 }
