@@ -5,8 +5,6 @@ const nurses = require('../routes/nurses');
 const wards = require('../routes/wards');
 const sync = require('../routes/sync');
 
-const sequelize = require('./database');
-
 const express = require('express');
 
 module.exports = function(app){ 

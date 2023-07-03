@@ -1,9 +1,9 @@
-const sequelize = require('./startup/database');
 const app = require('./startup/express');
 
+require('./startup/database');
 require('./startup/routes')(app);
 
-const server = connection(app);
+connection(app);
 
 function connection(app) {
     const port = process.env.PORT || 3000;

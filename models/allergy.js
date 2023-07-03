@@ -1,4 +1,4 @@
-const {Sequelize, DataTypes} = require('sequelize');
+const {DataTypes} = require('sequelize');
 const sequelize = require('../startup/database');
 
 module.exports = sequelize.define('allergy', {
