@@ -27,7 +27,6 @@ module.exports = sequelize.define('patient', {
     wardId: {
         type: DataTypes.UUID,
         allowNull: false,
-        unique: true,
         field: 'ward_id',
         validate: {
             isUUID: 4,
@@ -38,6 +37,7 @@ module.exports = sequelize.define('patient', {
     admitDate: {
         type: DataTypes.DATEONLY,
         allowNull: false,
+        defaultValue: DataTypes.NOW,
         field: 'admit_date',
         validate: {
             isDate: true,

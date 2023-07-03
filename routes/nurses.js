@@ -1,7 +1,7 @@
 const { Nurse, Staff, Person } = require('../startup/associations')
 const { postValidator, putValidator } = require('../validations/nurse');
-const { Sequelize, Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize');
 
 const validate = require('../middleware/validate');
 const sequelize = require('../startup/database');
