@@ -13,18 +13,15 @@ module.exports = sequelize.define('nurse', {
             notEmpty: true
         }
     },
-    staff_id: {
+    staffId: {
         type: DataTypes.UUID,
         allowNull: false,
         unique: true,
+        field: 'staff_id',
         validate: {
             isUUID: 4,
             notNull: true,
             notEmpty: true
-        },
-        references: {
-            model: 'staffs',
-            key: 'id'
         }
     },
 }, {

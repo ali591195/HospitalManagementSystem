@@ -1,4 +1,5 @@
 const {Sequelize, DataTypes} = require('sequelize');
+
 const sequelize = require('../startup/database');
 
 module.exports = sequelize.define('doctor', {
@@ -13,19 +14,16 @@ module.exports = sequelize.define('doctor', {
             notEmpty: true
         }
     },
-    staff_id: {
+    staffId: {
         type: DataTypes.UUID,
         allowNull: false,
         unique: true,
+        field: 'staff_id',
         validate: {
             isUUID: 4,
             notNull: true,
             notEmpty: true
         },
-        references: {
-            model: 'staffs',
-            key: 'id'
-        }
     },
     specialty: {
         type: DataTypes.STRING(255),

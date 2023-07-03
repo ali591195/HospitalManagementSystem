@@ -2,32 +2,26 @@ const {Sequelize, DataTypes} = require('sequelize');
 const sequelize = require('../startup/database');
 
 module.exports = sequelize.define('doctor_nurse_assignment', {
-    doctor_id: {
+    doctorId: {
         type: DataTypes.UUID,
         primaryKey: true,
         allowNull: false,
+        field: 'doctor_id',
         validate: {
             isUUID: 4,
             notNull: true,
             notEmpty: true
-        },
-        references: {
-            model: 'doctors',
-            key: 'id'
         }
     },
-    nurse_id: {
+    nurseId: {
         type: DataTypes.UUID,
         primaryKey: true,
         allowNull: false,
+        field: 'nurse_id',
         validate: {
             isUUID: 4,
             notNull: true,
             notEmpty: true
-        },
-        references: {
-            model: 'nurses',
-            key: 'id'
         }
     }
 }, {

@@ -1,5 +1,4 @@
-require('../startup/allModelsDefinition')();
-
+require('../startup/associations');
 const express = require('express');
 const router = express.Router();
 const sequelize = require('../startup/database');

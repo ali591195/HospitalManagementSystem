@@ -13,18 +13,15 @@ module.exports = sequelize.define('staff', {
             notEmpty: true
         }
     },
-    person_id: {
+    personId: {
         type: DataTypes.UUID,
         allowNull: false,
         unique: true,
+        field: 'person_id',
         validate: {
             isUUID: 4,
             notNull: true,
             notEmpty: true
-        },
-        references: {
-            model: 'people',
-            key: 'id'
         }
     },
     post: {
@@ -32,17 +29,18 @@ module.exports = sequelize.define('staff', {
         allowNull: false,
         validate: {
             notNull: true,
-            is: /^(doctor|nurse){5,6}$/i
+            is: /^(Doctor|Nurse)$/
         },
         set(value) {
-            value.toLowerCase();
             const correctVal = value.charAt(0).toUpperCase() + value.slice(1);
             this.setDataValue('post', correctVal);
         }
     },
-    join_date: {
+    joinDate: {
         type: DataTypes.DATEONLY,
         allowNull: false,
+        defaultValue: DataTypes.NOW,
+        field: 'join_date',
         validate: {
             isDate: true,
             notNull: true,
@@ -51,6 +49,7 @@ module.exports = sequelize.define('staff', {
     salary: {
         type: DataTypes.DECIMAL(9, 2).UNSIGNED,
         allowNull: false,
+        defaultValue: 0,
         validate: {
             isDecimal: true,
             notNull: true
@@ -58,18 +57,15 @@ module.exports = sequelize.define('staff', {
     },
     shift: {
         type: DataTypes.STRING(2),
-        allowNull: false,
         validate: {
-            notNull: true,
             is: /^(Morning|M|Day|D|Evening|E|Night|N|Midnight|MD)$/i
         },
         set(value) {
-            value.toLowerCase();
-            if (value === 'morning' || value === 'm') this.setDataValue('gender', 'M');
-            if (value === 'day' || value === 'd') this.setDataValue('gender', 'D');
-            if (value === 'evening' || value === 'e') this.setDataValue('gender', 'E');
-            if (value === 'night' || value === 'n') this.setDataValue('gender', 'N');
-            if (value === 'midnight' || value === 'md') this.setDataValue('gender', 'MD');
+            if (value === 'morning' || value === 'm') this.setDataValue('shift', 'M');
+            if (value === 'day' || value === 'd') this.setDataValue('shift', 'D');
+            if (value === 'evening' || value === 'e') this.setDataValue('shift', 'E');
+            if (value === 'night' || value === 'n') this.setDataValue('shift', 'N');
+            if (value === 'midnight' || value === 'md') this.setDataValue('shift', 'MD');
         }
     }
 }, {

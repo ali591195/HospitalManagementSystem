@@ -13,44 +13,40 @@ module.exports = sequelize.define('patient', {
             notEmpty: true
         }
     },
-    person_id: {
+    personId: {
         type: DataTypes.UUID,
         allowNull: false,
         unique: true,
+        field: 'person_id',
         validate: {
             isUUID: 4,
             notNull: true,
             notEmpty: true
-        },
-        references: {
-            model: 'people',
-            key: 'id'
         }
     },
-    ward_id: {
+    wardId: {
         type: DataTypes.UUID,
         allowNull: false,
         unique: true,
+        field: 'ward_id',
         validate: {
             isUUID: 4,
             notNull: true,
             notEmpty: true
-        },
-        references: {
-            model: 'wards',
-            key: 'id'
         }
     },
-    admit_date: {
+    admitDate: {
         type: DataTypes.DATEONLY,
         allowNull: false,
+        field: 'admit_date',
         validate: {
             isDate: true,
             notNull: true,
         }
     },
-    release_date: {
+    releaseDate: {
         type: DataTypes.DATEONLY,
+        field: 'release_date',
         validate: {
             isDate: true,
         }

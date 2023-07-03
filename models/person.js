@@ -13,9 +13,10 @@ module.exports = sequelize.define('person', {
             notEmpty: true
         }
     },
-    first_name: {
+    firstName: {
         type: DataTypes.STRING(50),
         allowNull: false,
+        field: 'first_name',
         validate: {
             isAlpha: true,
             notNull: true,
@@ -23,9 +24,10 @@ module.exports = sequelize.define('person', {
             max: 50
         }
     },
-    last_name: {
+    lastName: {
         type: DataTypes.STRING(50),
         allowNull: false,
+        field: 'last_name',
         validate: {
             isAlpha: true,
             notNull: true,
@@ -41,9 +43,8 @@ module.exports = sequelize.define('person', {
             is: /^(Male|Female|M|F)$/i
         },
         set(value) {
-            value.toLowerCase();
-            if (value === 'male' || value === 'm') this.setDataValue('gender', 'M');
-            if (value === 'female' || value === 'f') this.setDataValue('gender', 'F');
+                if (value === 'male' || value === 'm') this.setDataValue('gender', 'M');
+                else if (value === 'female' || value === 'f') this.setDataValue('gender', 'F');
         }
     },
     cnic: {
@@ -63,9 +64,10 @@ module.exports = sequelize.define('person', {
             is: /^[0-9]{4}-[0-9]{7}$/
         }
     },
-    birth_date: {
+    birthDate: {
         type: DataTypes.DATEONLY,
         allowNull: false,
+        field: 'birth_date',
         validate: {
             isDate: true,
             notNull: true,
