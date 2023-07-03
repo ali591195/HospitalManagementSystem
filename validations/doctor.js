@@ -12,6 +12,7 @@ exports.postValidator = function(obj) {
         salary: Joi.number(),
         shift: Joi.string().min(1).max(8).regex(/^(Morning|M|Day|D|Evening|E|Night|N|Midnight|MD)$/i),
         specialty: Joi.string().min(3).max(255).required(),
+        assignedPatients: Joi.array().items(Joi.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/)),
         assignedNurses: Joi.array().items(Joi.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/)),
         assignedWards: Joi.array().items(Joi.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/)),
     });
@@ -30,6 +31,7 @@ exports.putValidator = function(obj) {
         salary: Joi.number(),
         shift: Joi.string().min(1).max(8).regex(/^(Morning|M|Day|D|Evening|E|Night|N|Midnight|MD)$/i),
         specialty: Joi.string().min(3).max(255),
+        assignedPatients: Joi.array().items(Joi.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/)),
         assignedNurses: Joi.array().items(Joi.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/)),
         assignedWards: Joi.array().items(Joi.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/)),
     });

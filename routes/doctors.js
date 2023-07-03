@@ -41,10 +41,11 @@ router.put('/:id', validate(putValidator), async (req, res) => {
         
         await t.commit();
 
+        if (obj.assignedPatients) await staff.addPatients(obj.assignedPatients);
         if (obj.assignedNurses) await doctor.addNurses(obj.assignedNurses);
         if (obj.assignedWards) await staff.addWards(obj.assignedWards);
         
-        const updatedNurse = await Person.findByPk(person.id,
+        const updatedDoctor = await Person.findByPk(person.id,
             {
                 include: [
                     {
@@ -80,12 +81,14 @@ router.put('/:id', validate(putValidator), async (req, res) => {
                 raw: true
         });
 
+        const patients = await staff.getPatients();
+        updatedDoctor.assignedPatients = patients.map(patient => patient.id);
         const nurses = await doctor.getNurses();
-        updatedNurse.assignedNurses = nurses.map(nurse => nurse.id);
+        updatedDoctor.assignedNurses = nurses.map(nurse => nurse.id);
         const wards = await staff.getWards();
-        updatedNurse.assignedWards = wards.map(ward => ward.id);
+        updatedDoctor.assignedWards = wards.map(ward => ward.id);
 
-        res.send(updatedNurse);
+        res.send(updatedDoctor);
     } catch(err) {
         await t.rollback();
         console.error(err);
@@ -137,6 +140,8 @@ router.delete('/:id', async (req, res) => {
                 raw: true
         });
 
+        const patients = await staff.getPatients();
+        deletedDoctor.assignedPatients = patients.map(patient => patient.id);
         const nurses = await doctor.getNurses();
         deletedDoctor.assignedNurses = nurses.map(nurse => nurse.id);
         const wards = await staff.getWards();
@@ -202,6 +207,8 @@ router.get('/:id', async (req, res) => {
             raw: true
     });
 
+    const patients = await staff.getPatients();
+    doctorInstance.assignedPatients = patients.map(patient => patient.id);
     const nurses = await doctor.getNurses();
     doctorInstance.assignedNurses = nurses.map(nurse => nurse.id);
     const wards = await staff.getWards();
@@ -241,10 +248,9 @@ router.post('/', validate(postValidator), async (req, res) => {
 
         await t.commit();
 
+        if (obj.assignedPatients) await staff.addPatients(obj.assignedPatients);
         if (obj.assignedNurses) await doctor.addNurses(obj.assignedNurses);
-        
         if (obj.assignedWards) await staff.addWards(obj.assignedWards);
-        
         
         const createdDoctor = await Person.findByPk(person.id,
             {
@@ -284,6 +290,8 @@ router.post('/', validate(postValidator), async (req, res) => {
                 raw: true
         });
 
+        const patients = await staff.getPatients();
+        createdDoctor.assignedPatients = patients.map(patient => patient.id);
         const nurses = await doctor.getNurses();
         createdDoctor.assignedNurses = nurses.map(nurse => nurse.id);
         const wards = await staff.getWards();
@@ -344,7 +352,9 @@ router.get('/', async (req, res) => {
             const assignedWards = wards.map(ward => ward.id);
             const nurses = await doctor.getNurses();
             const assignedNurses = nurses.map(nurse => nurse.id);
-            return { ...doctors, assignedNurses, assignedWards };
+            const patients = await staff.getPatients();
+            const assignedPatients = patients.map(patient => patient.id);
+            return { ...doctors, assignedPatients, assignedNurses, assignedWards };
         })
     );
     res.send(doctorsList);
