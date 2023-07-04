@@ -1,13 +1,11 @@
-const { postValidator, putValidator } = require('../validations/allergy');
+const { postValidator, putValidator, expressPostValidator, expressPutValidator } = require('../validations/allergy');
 const { Allergy } = require('../startup/associations');
 const { v4: uuidv4 } = require('uuid');
-
-const validate = require('../middleware/validate');
 
 const express = require('express');
 const router = express.Router();
 
-router.put('/:id', validate(putValidator), async (req, res) => {
+router.put('/:id', expressPutValidator, async (req, res) => {
     const id = req.params.id;
     const obj  = req.body;
 
@@ -15,6 +13,9 @@ router.put('/:id', validate(putValidator), async (req, res) => {
     if (!allergy) return res.status(404).send(`The id ${id} does not exist...`);
 
     try {
+        const error = putValidator(req.body);
+        if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
+
         await Allergy.update({
             name: obj.name || allergy.name,
         }, { where: { id: allergy.id } });
@@ -95,10 +96,13 @@ router.get('/:id', async (req, res) => {
     res.send(allegyInstance);
 });
 
-router.post('/', validate(postValidator), async (req, res) => {
+router.post('/', expressPostValidator, async (req, res) => {
     const obj = req.body;
 
     try {
+        const error = postValidator(req.body);
+        if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
+
         const allergy = await Allergy.create({ 
             id: uuidv4(), 
             name: obj.name

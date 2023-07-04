@@ -1,15 +1,14 @@
 const { Nurse, Staff, Person } = require('../startup/associations')
-const { postValidator, putValidator } = require('../validations/nurse');
+const { postValidator, putValidator, expressPostValidator, expressPutValidator } = require('../validations/nurse');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 
-const validate = require('../middleware/validate');
 const sequelize = require('../startup/database');
 
 const express = require('express');
 const router = express.Router();
 
-router.put('/:id', validate(putValidator), async (req, res) => {
+router.put('/:id', expressPutValidator, async (req, res) => {
     const id = req.params.id;
     const obj  = req.body;
 
@@ -22,6 +21,10 @@ router.put('/:id', validate(putValidator), async (req, res) => {
         const person = await Person.findByPk(staff.personId);
         const gender = obj.gender || person.gender;
         const shift = obj.shift || staff.shift
+
+        const error = putValidator(req.body);
+        if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
+
         await Person.update({ 
             firstName: obj.firstName || person.firstName, 
             lastName: obj.lastName || person.lastName, 
@@ -209,12 +212,14 @@ router.get('/:id', async (req, res) => {
     res.send(nurseRecord);
 });
 
-router.post('/', validate(postValidator), async (req, res) => {
+router.post('/', expressPostValidator, async (req, res) => {
     const obj = req.body;
 
     const t = await sequelize.transaction();
 
     try {
+        const error = postValidator(req.body);
+        if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
 
         const person = await Person.create({ 
             id: uuidv4(), 

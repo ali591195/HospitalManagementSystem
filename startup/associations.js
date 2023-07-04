@@ -18,9 +18,14 @@ Staff.belongsToMany(Patient, { through: StaffPatientAssignment });
 Doctor.belongsToMany(Nurse, { through: DoctorNurseAssignment });
 Nurse.belongsToMany(Doctor, { through: DoctorNurseAssignment });
 Staff.belongsToMany(Ward, { through: StaffWardAssignment });
-Ward.belongsToMany(Staff, { through: StaffWardAssignment });
+Ward.belongsToMany(Staff, { through: StaffWardAssignment, as: 'assignedStaffs' });
 
+Patient.belongsTo(Person);
+Patient.belongsTo(Ward);
+Staff.belongsTo(Person);
+Doctor.belongsTo(Staff);
 Person.hasOne(Patient);
+Nurse.belongsTo(Staff);
 Ward.hasMany(Patient);
 Person.hasOne(Staff);
 Staff.hasOne(Doctor);
