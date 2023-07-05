@@ -1,7 +1,6 @@
-const { Doctor, Staff, Person } = require('../startup/associations');
+const { Doctor, Staff, Person, Patient, Nurse, Ward, StaffWardAssignment, DoctorNurseAssignment, StaffPatientAssignment } = require('../startup/associations');
 const { postValidator, putValidator, expressPostValidator, expressPutValidator } = require('../validations/doctor');
 const { v4: uuidv4 } = require('uuid');
-const { Op } = require('sequelize');
 
 const sequelize = require('../startup/database');
 
@@ -12,86 +11,182 @@ router.put('/:id', expressPutValidator, async (req, res) => {
     const id = req.params.id;
     const obj  = req.body;
 
-    const doctor = await Doctor.findByPk(id);
+    let doctor = await await Doctor.findByPk(id, {
+        include: [
+            {
+                model: Staff,
+                include: [
+                    {
+                        model: Person,
+                        attributes: []
+                    }
+                ],
+                attributes: [],
+            }
+        ],
+        attributes: [
+            'id',
+            ['staff_id', 'staffId'],
+            [sequelize.literal('`staff`.`person_id`'), 'personId'],
+            [sequelize.literal('`staff->person`.`first_name`'), 'firstName'],
+            [sequelize.literal('`staff->person`.`last_name`'), 'lastName'],
+            [sequelize.literal('`staff->person`.`cnic`'), 'cnic'],
+            [sequelize.literal('`staff->person`.`phone`'), 'phone'],
+            [sequelize.literal('`staff->person`.`birth_date`'), 'birthDate'],
+            [sequelize.literal('`staff->person`.`gender`'), 'gender'],
+            [sequelize.literal('`staff`.`post`'), 'post'],
+            [sequelize.literal('`staff`.`join_date`'), 'joinDate'],
+            [sequelize.literal('`staff`.`salary`'), 'salary'],
+            [sequelize.literal('`staff`.`shift`'), 'shift'],
+            'specialty'
+        ],
+        nest: true
+    });
     if (!doctor) return res.status(404).send(`The id ${id} does not exist...`);
+
+    doctor = doctor.get({ plain: true });
 
     const t = await sequelize.transaction();
     try {
-        const staff = await Staff.findByPk(doctor.staffId);
-        const person = await Person.findByPk(staff.personId);
-        const gender = obj.gender || person.gender;
-        const shift = obj.shift || staff.shift
+        const gender = obj.gender || doctor.gender;
+        const shift = obj.shift || doctor.shift
 
         const error = putValidator(req.body);
         if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
 
         await Person.update({ 
-            firstName: obj.firstName || person.firstName, 
-            lastName: obj.lastName || person.lastName, 
+            firstName: obj.firstName || doctor.firstName, 
+            lastName: obj.lastName || doctor.lastName, 
             gender: gender.toLowerCase(), 
-            cnic: obj.cnic || person.cnic, 
-            phone: obj.phone || person.phone, 
-            birthDate: obj.birthDate || person.birthDate
-        }, { where: { id: person.id }, transaction: t });
+            cnic: obj.cnic || doctor.cnic, 
+            phone: obj.phone || doctor.phone, 
+            birthDate: obj.birthDate || doctor.birthDate
+        }, { where: { id: doctor.personId }, transaction: t });
         await Staff.update({
-            joinDate: obj.joinDate || staff.joinDate,
-            salary: obj.salary || staff.salary,
+            joinDate: obj.joinDate || doctor.joinDate,
+            salary: obj.salary || doctor.salary,
             shift: shift.toLowerCase()
-        }, { where: { id: staff.id }, transaction: t });
+        }, { where: { id: doctor.staffId }, transaction: t });
         await Doctor.update({
             specialty: obj.specialty || doctor.specialty
         }, { where: { id: doctor.id }, transaction: t });
         
         await t.commit();
 
-        if (obj.assignedPatients) await staff.addPatients(obj.assignedPatients);
-        if (obj.assignedNurses) await doctor.addNurses(obj.assignedNurses);
-        if (obj.assignedWards) await staff.addWards(obj.assignedWards);
+        if (obj.assignedPatients) {
+            const assignments = obj.assignedPatients.map(instance => ({
+                staffId: doctor.staffId,
+                patientId: instance
+            }));
+            await StaffPatientAssignment.bulkCreate(assignments, { validate: true, ignoreDuplicates: true });
+        }
+        if (obj.assignedNurses) {
+            const assignments = obj.assignedNurses.map(instance => ({
+                doctorId: doctor.id,
+                nurseId: instance
+            }));
+            await DoctorNurseAssignment.bulkCreate(assignments, { validate: true, ignoreDuplicates: true });
+        }
+        if (obj.assignedWards) {
+            const assignments = obj.assignedWards.map(instance => ({
+                staffId: doctor.staffId,
+                wardId: instance
+            }));
+            await StaffWardAssignment.bulkCreate(assignments, { validate: true, ignoreDuplicates: true });
+        }
         
-        const updatedDoctor = await Person.findByPk(person.id,
-            {
-                include: [
-                    {
-                        model: Staff,
-                        attributes: [],
-                        include: {
-                            model: Doctor,
-                            attributes: []
-                        }
-                    }
-                ],
-                attributes: { 
-                    exclude: [
-                        'id',
-                        'firstName',
-                        'lastName',
-                        'created_at',
-                        'updated_at'
-                    ],
+        const doctorInstance = await Doctor.findByPk(id, {
+            include: [
+                {
+                    model: Staff,
                     include: [
-                        [sequelize.col('staff.doctor.id'), 'id'],
-                        [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                        'gender',
-                        'cnic',
-                        'phone',
-                        ['birth_date', 'birthDate'],
-                        [sequelize.col('staff.join_date'), 'joinDate'],
-                        [sequelize.col('staff.salary'), 'salary'],
-                        [sequelize.col('staff.shift'), 'shift'],
-                        [sequelize.col('staff.doctor.specialty'), 'specialty']
-                    ]
+                        {
+                            model: Person,
+                            attributes: []
+                        },
+                        {
+                            model: Patient,
+                            through: { attributes: [] },
+                            include: [
+                                {
+                                    model: Person,
+                                    attributes: []
+                                }
+                            ],
+                            attributes: [
+                                'id',
+                                ['ward_id', 'wardId'],
+                                [sequelize.literal("CONCAT(`staff->patients->person`.`first_name`, ' ', `staff->patients->person`.`last_name`)"), 'fullName'],
+                                [sequelize.literal('`staff->patients->person`.`cnic`'), 'cnic'],
+                                [sequelize.literal('`staff->patients->person`.`phone`'), 'phone'],
+                                [sequelize.literal('`staff->patients->person`.`birth_date`'), 'birthDate'],
+                                [sequelize.literal('`staff->patients->person`.`gender`'), 'gender'],
+                                ['admit_date', 'admitDate'],
+                                ['release_date', 'releaseDate'],
+                                'sickness',
+                                'medication'
+                            ]
+                        },
+                        {
+                            model: Ward,
+                            attributes: [ 'id', 'name', 'capacity' ],
+                            through: { attributes: [] }
+                        }
+                    ],
+                    attributes: [
+                        'id'
+                    ],
                 },
-                raw: true
+                {
+                    model: Nurse,
+                    include: {
+                        model: Staff,
+                        include: {
+                            model: Person,
+                            attributes: []
+                        },
+                        attributes: []
+                    },
+                    attributes: [
+                        'id',
+                        ['staff_id', 'staffId'],
+                        [sequelize.literal("CONCAT(`nurses->staff->person`.`first_name`, ' ', `nurses->staff->person`.`last_name`)"), 'fullName'],
+                        [sequelize.literal('`nurses->staff->person`.`cnic`'), 'cnic'],
+                        [sequelize.literal('`nurses->staff->person`.`phone`'), 'phone'],
+                        [sequelize.literal('`nurses->staff->person`.`birth_date`'), 'birthDate'],
+                        [sequelize.literal('`nurses->staff->person`.`gender`'), 'gender'],
+                        [sequelize.literal('`nurses->staff`.`join_date`'), 'joinDate'],
+                        [sequelize.literal('`nurses->staff`.`salary`'), 'salary'],
+                        [sequelize.literal('`nurses->staff`.`shift`'), 'shift'],
+                    ],
+                    through: { attributes: [] }
+                },
+            ],
+            attributes: [
+                'id',
+                ['staff_id', 'staffId'],
+                [sequelize.literal("CONCAT(`staff->person`.`first_name`, ' ', `staff->person`.`last_name`)"), 'fullName'],
+                [sequelize.literal('`staff->person`.`cnic`'), 'cnic'],
+                [sequelize.literal('`staff->person`.`phone`'), 'phone'],
+                [sequelize.literal('`staff->person`.`birth_date`'), 'birthDate'],
+                [sequelize.literal('`staff->person`.`gender`'), 'gender'],
+                [sequelize.literal('`staff`.`post`'), 'post'],
+                [sequelize.literal('`staff`.`join_date`'), 'joinDate'],
+                [sequelize.literal('`staff`.`salary`'), 'salary'],
+                [sequelize.literal('`staff`.`shift`'), 'shift'],
+                'specialty'
+            ],
+            nest: true
         });
 
-        const patients = await staff.getPatients();
-        updatedDoctor.assignedPatients = patients.map(patient => patient.id);
-        const nurses = await doctor.getNurses();
-        updatedDoctor.assignedNurses = nurses.map(nurse => nurse.id);
-        const wards = await staff.getWards();
-        updatedDoctor.assignedWards = wards.map(ward => ward.id);
+        doctor = doctorInstance.get({ plain: true });
+        doctor.assignedWards = doctor.staff.wards;
+        doctor.assignedPatients = doctor.staff.patients;
+        doctor.assignedNurses = doctor.nurses;
+        delete doctor.staff;
+        delete doctor.nurses;
 
-        res.send(updatedDoctor);
+        res.send(doctor);
     } catch(err) {
         await t.rollback();
         console.error(err);
@@ -101,61 +196,107 @@ router.put('/:id', expressPutValidator, async (req, res) => {
 router.delete('/:id', async (req, res) => {
     const id = req.params.id;
 
-    const doctor = await Doctor.findByPk(id);
-    if (!doctor) return res.status(404).send(`The id ${id} does not exist...`);
+    const doctorInstance = await Doctor.findByPk(id, {
+        include: [
+            {
+                model: Staff,
+                include: [
+                    {
+                        model: Person,
+                        attributes: []
+                    },
+                    {
+                        model: Patient,
+                        through: { attributes: [] },
+                        include: [
+                            {
+                                model: Person,
+                                attributes: []
+                            }
+                        ],
+                        attributes: [
+                            'id',
+                            ['ward_id', 'wardId'],
+                            [sequelize.literal("CONCAT(`staff->patients->person`.`first_name`, ' ', `staff->patients->person`.`last_name`)"), 'fullName'],
+                            [sequelize.literal('`staff->patients->person`.`cnic`'), 'cnic'],
+                            [sequelize.literal('`staff->patients->person`.`phone`'), 'phone'],
+                            [sequelize.literal('`staff->patients->person`.`birth_date`'), 'birthDate'],
+                            [sequelize.literal('`staff->patients->person`.`gender`'), 'gender'],
+                            ['admit_date', 'admitDate'],
+                            ['release_date', 'releaseDate'],
+                            'sickness',
+                            'medication'
+                        ]
+                    },
+                    {
+                        model: Ward,
+                        attributes: [ 'id', 'name', 'capacity' ],
+                        through: { attributes: [] }
+                    }
+                ],
+                attributes: [
+                    'id'
+                ],
+            },
+            {
+                model: Nurse,
+                include: {
+                    model: Staff,
+                    include: {
+                        model: Person,
+                        attributes: []
+                    },
+                    attributes: []
+                },
+                attributes: [
+                    'id',
+                    ['staff_id', 'staffId'],
+                    [sequelize.literal("CONCAT(`nurses->staff->person`.`first_name`, ' ', `nurses->staff->person`.`last_name`)"), 'fullName'],
+                    [sequelize.literal('`nurses->staff->person`.`cnic`'), 'cnic'],
+                    [sequelize.literal('`nurses->staff->person`.`phone`'), 'phone'],
+                    [sequelize.literal('`nurses->staff->person`.`birth_date`'), 'birthDate'],
+                    [sequelize.literal('`nurses->staff->person`.`gender`'), 'gender'],
+                    [sequelize.literal('`nurses->staff`.`join_date`'), 'joinDate'],
+                    [sequelize.literal('`nurses->staff`.`salary`'), 'salary'],
+                    [sequelize.literal('`nurses->staff`.`shift`'), 'shift'],
+                ],
+                through: { attributes: [] }
+            },
+        ],
+        attributes: [
+            'id',
+            ['staff_id', 'staffId'],
+            [sequelize.literal('`staff`.`person_id`'), 'personId'],
+            [sequelize.literal("CONCAT(`staff->person`.`first_name`, ' ', `staff->person`.`last_name`)"), 'fullName'],
+            [sequelize.literal('`staff->person`.`cnic`'), 'cnic'],
+            [sequelize.literal('`staff->person`.`phone`'), 'phone'],
+            [sequelize.literal('`staff->person`.`birth_date`'), 'birthDate'],
+            [sequelize.literal('`staff->person`.`gender`'), 'gender'],
+            [sequelize.literal('`staff`.`post`'), 'post'],
+            [sequelize.literal('`staff`.`join_date`'), 'joinDate'],
+            [sequelize.literal('`staff`.`salary`'), 'salary'],
+            [sequelize.literal('`staff`.`shift`'), 'shift'],
+            'specialty'
+        ],
+        nest: true
+    });
+    if (!doctorInstance) return res.status(404).send(`The id ${id} does not exist...`);
+
+    const doctor = doctorInstance.get({ plain: true });
+    doctor.assignedWards = doctor.staff.wards;
+    doctor.assignedPatients = doctor.staff.patients;
+    doctor.assignedNurses = doctor.nurses;
+    delete doctor.staff;
+    delete doctor.nurses;
 
     const t = await sequelize.transaction();
     try {
-        const staff = await Staff.findByPk(doctor.staffId);
-        const deletedDoctor = await Person.findByPk(staff.personId,
-            {
-                include: [
-                    {
-                        model: Staff,
-                        attributes: [],
-                        include: {
-                            model: Doctor,
-                            attributes: []
-                        }
-                    }
-                ],
-                attributes: { 
-                    exclude: [
-                        'firstName',
-                        'lastName',
-                        'created_at',
-                        'updated_at'
-                    ],
-                    include: [
-                        [sequelize.col('staff.doctor.id'), 'id'],
-                        ['id', 'personId'],
-                        [sequelize.col('staff.id'), 'staffId'],
-                        [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                        'cnic',
-                        'phone',
-                        ['birth_date', 'birthDate'],
-                        [sequelize.col('staff.join_date'), 'joinDate'],
-                        [sequelize.col('staff.salary'), 'salary'],
-                        [sequelize.col('staff.shift'), 'shift'],
-                        [sequelize.col('staff.doctor.specialty'), 'specialty']
-                    ]
-                },
-                raw: true
-        });
-
-        const patients = await staff.getPatients();
-        deletedDoctor.assignedPatients = patients.map(patient => patient.id);
-        const nurses = await doctor.getNurses();
-        deletedDoctor.assignedNurses = nurses.map(nurse => nurse.id);
-        const wards = await staff.getWards();
-        deletedDoctor.assignedWards = wards.map(ward => ward.id);
-
         await Doctor.destroy({ where: { id: id}, transaction: t });
-        await Staff.destroy({ where: { id: deletedDoctor.staffId }, transaction: t });
-        await Person.destroy({ where: { id: deletedDoctor.personId }, transaction: t });
+        await Staff.destroy({ where: { id: doctor.staffId }, transaction: t });
+        await Person.destroy({ where: { id: doctor.personId }, transaction: t });
         await t.commit();
         
-        res.send(deletedDoctor);
+        res.send(doctor);
     }
     catch(err) {
         await t.rollback();
@@ -166,58 +307,99 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id', async (req, res) => {
     const id = req.params.id;
 
-    const doctor = await Doctor.findByPk(id);
-    if (!doctor) return res.status(404).send(`The id ${id} does not exist...`);
-
-    const staff = await Staff.findByPk(doctor.staffId);
-    const person = await Person.findByPk(staff.personId);
-    
-    const doctorInstance = await Person.findByPk(person.id,
-        {
-            include: [
-                {
-                    model: Staff,
-                    attributes: [],
-                    include: [
-                        {
-                            model: Doctor,
-                            attributes: []
-                        }
-                    ]
-                }
-            ],
-            attributes: { 
-                exclude: [
-                    'id',
-                    'firstName',
-                    'lastName',
-                    'created_at',
-                    'updated_at'
-                ],
+    const doctorInstance = await Doctor.findByPk(id, {
+        include: [
+            {
+                model: Staff,
                 include: [
-                    [sequelize.col('staff.doctor.id'), 'id'],
-                    [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                    'gender',
-                    'cnic',
-                    'phone',
-                    ['birth_date', 'birthDate'],
-                    [sequelize.col('staff.join_date'), 'joinDate'],
-                    [sequelize.col('staff.salary'), 'salary'],
-                    [sequelize.col('staff.shift'), 'shift'],
-                    [sequelize.col('staff.doctor.specialty'), 'specialty']
-                ]
+                    {
+                        model: Person,
+                        attributes: []
+                    },
+                    {
+                        model: Patient,
+                        through: { attributes: [] },
+                        include: [
+                            {
+                                model: Person,
+                                attributes: []
+                            }
+                        ],
+                        attributes: [
+                            'id',
+                            ['ward_id', 'wardId'],
+                            [sequelize.literal("CONCAT(`staff->patients->person`.`first_name`, ' ', `staff->patients->person`.`last_name`)"), 'fullName'],
+                            [sequelize.literal('`staff->patients->person`.`cnic`'), 'cnic'],
+                            [sequelize.literal('`staff->patients->person`.`phone`'), 'phone'],
+                            [sequelize.literal('`staff->patients->person`.`birth_date`'), 'birthDate'],
+                            [sequelize.literal('`staff->patients->person`.`gender`'), 'gender'],
+                            ['admit_date', 'admitDate'],
+                            ['release_date', 'releaseDate'],
+                            'sickness',
+                            'medication'
+                        ]
+                    },
+                    {
+                        model: Ward,
+                        attributes: [ 'id', 'name', 'capacity' ],
+                        through: { attributes: [] }
+                    }
+                ],
+                attributes: [
+                    'id'
+                ],
             },
-            raw: true
+            {
+                model: Nurse,
+                include: {
+                    model: Staff,
+                    include: {
+                        model: Person,
+                        attributes: []
+                    },
+                    attributes: []
+                },
+                attributes: [
+                    'id',
+                    ['staff_id', 'staffId'],
+                    [sequelize.literal("CONCAT(`nurses->staff->person`.`first_name`, ' ', `nurses->staff->person`.`last_name`)"), 'fullName'],
+                    [sequelize.literal('`nurses->staff->person`.`cnic`'), 'cnic'],
+                    [sequelize.literal('`nurses->staff->person`.`phone`'), 'phone'],
+                    [sequelize.literal('`nurses->staff->person`.`birth_date`'), 'birthDate'],
+                    [sequelize.literal('`nurses->staff->person`.`gender`'), 'gender'],
+                    [sequelize.literal('`nurses->staff`.`join_date`'), 'joinDate'],
+                    [sequelize.literal('`nurses->staff`.`salary`'), 'salary'],
+                    [sequelize.literal('`nurses->staff`.`shift`'), 'shift'],
+                ],
+                through: { attributes: [] }
+            },
+        ],
+        attributes: [
+            'id',
+            ['staff_id', 'staffId'],
+            [sequelize.literal("CONCAT(`staff->person`.`first_name`, ' ', `staff->person`.`last_name`)"), 'fullName'],
+            [sequelize.literal('`staff->person`.`cnic`'), 'cnic'],
+            [sequelize.literal('`staff->person`.`phone`'), 'phone'],
+            [sequelize.literal('`staff->person`.`birth_date`'), 'birthDate'],
+            [sequelize.literal('`staff->person`.`gender`'), 'gender'],
+            [sequelize.literal('`staff`.`post`'), 'post'],
+            [sequelize.literal('`staff`.`join_date`'), 'joinDate'],
+            [sequelize.literal('`staff`.`salary`'), 'salary'],
+            [sequelize.literal('`staff`.`shift`'), 'shift'],
+            'specialty'
+        ],
+        nest: true
     });
+    if (!doctorInstance) return res.status(404).send(`The id ${id} does not exist...`);
 
-    const patients = await staff.getPatients();
-    doctorInstance.assignedPatients = patients.map(patient => patient.id);
-    const nurses = await doctor.getNurses();
-    doctorInstance.assignedNurses = nurses.map(nurse => nurse.id);
-    const wards = await staff.getWards();
-    doctorInstance.assignedWards = wards.map(ward => ward.id);
+    const doctor = doctorInstance.get({ plain: true });
+    doctor.assignedWards = doctor.staff.wards;
+    doctor.assignedPatients = doctor.staff.patients;
+    doctor.assignedNurses = doctor.nurses;
+    delete doctor.staff;
+    delete doctor.nurses;
 
-    res.send(doctorInstance);
+    res.send(doctor);
 });
 
 router.post('/', expressPostValidator, async (req, res) => {
@@ -246,7 +428,7 @@ router.post('/', expressPostValidator, async (req, res) => {
             salary: obj.salary,
             shift: obj.shift.toLowerCase()
         }, { transaction: t });
-        const doctor = await Doctor.create({ 
+        let doctor = await Doctor.create({ 
             id: uuidv4(), 
             staffId: staff.id,
             specialty: obj.specialty
@@ -258,52 +440,98 @@ router.post('/', expressPostValidator, async (req, res) => {
         if (obj.assignedNurses) await doctor.addNurses(obj.assignedNurses);
         if (obj.assignedWards) await staff.addWards(obj.assignedWards);
         
-        const createdDoctor = await Person.findByPk(person.id,
-            {
-                include: [
-                    {
-                        model: Staff,
-                        attributes: [],
-                        include: [
-                            {
-                                model: Doctor,
-                                attributes: []
-                            }
-                        ]
-                    }
-                ],
-                attributes: { 
-                    exclude: [
-                        'id',
-                        'firstName',
-                        'lastName',
-                        'created_at',
-                        'updated_at'
-                    ],
+        const doctorInstance = await Doctor.findByPk(doctor.id, {
+            include: [
+                {
+                    model: Staff,
                     include: [
-                        [sequelize.col('staff.doctor.id'), 'id'],
-                        [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                        'gender',
-                        'cnic',
-                        'phone',
-                        ['birth_date', 'birthDate'],
-                        [sequelize.col('staff.join_date'), 'joinDate'],
-                        [sequelize.col('staff.salary'), 'salary'],
-                        [sequelize.col('staff.shift'), 'shift'],
-                        [sequelize.col('staff.doctor.specialty'), 'specialty']
-                    ]
+                        {
+                            model: Person,
+                            attributes: []
+                        },
+                        {
+                            model: Patient,
+                            through: { attributes: [] },
+                            include: [
+                                {
+                                    model: Person,
+                                    attributes: []
+                                }
+                            ],
+                            attributes: [
+                                'id',
+                                ['ward_id', 'wardId'],
+                                [sequelize.literal("CONCAT(`staff->patients->person`.`first_name`, ' ', `staff->patients->person`.`last_name`)"), 'fullName'],
+                                [sequelize.literal('`staff->patients->person`.`cnic`'), 'cnic'],
+                                [sequelize.literal('`staff->patients->person`.`phone`'), 'phone'],
+                                [sequelize.literal('`staff->patients->person`.`birth_date`'), 'birthDate'],
+                                [sequelize.literal('`staff->patients->person`.`gender`'), 'gender'],
+                                ['admit_date', 'admitDate'],
+                                ['release_date', 'releaseDate'],
+                                'sickness',
+                                'medication'
+                            ]
+                        },
+                        {
+                            model: Ward,
+                            attributes: [ 'id', 'name', 'capacity' ],
+                            through: { attributes: [] }
+                        }
+                    ],
+                    attributes: [
+                        'id'
+                    ],
                 },
-                raw: true
+                {
+                    model: Nurse,
+                    include: {
+                        model: Staff,
+                        include: {
+                            model: Person,
+                            attributes: []
+                        },
+                        attributes: []
+                    },
+                    attributes: [
+                        'id',
+                        ['staff_id', 'staffId'],
+                        [sequelize.literal("CONCAT(`nurses->staff->person`.`first_name`, ' ', `nurses->staff->person`.`last_name`)"), 'fullName'],
+                        [sequelize.literal('`nurses->staff->person`.`cnic`'), 'cnic'],
+                        [sequelize.literal('`nurses->staff->person`.`phone`'), 'phone'],
+                        [sequelize.literal('`nurses->staff->person`.`birth_date`'), 'birthDate'],
+                        [sequelize.literal('`nurses->staff->person`.`gender`'), 'gender'],
+                        [sequelize.literal('`nurses->staff`.`join_date`'), 'joinDate'],
+                        [sequelize.literal('`nurses->staff`.`salary`'), 'salary'],
+                        [sequelize.literal('`nurses->staff`.`shift`'), 'shift'],
+                    ],
+                    through: { attributes: [] }
+                },
+            ],
+            attributes: [
+                'id',
+                ['staff_id', 'staffId'],
+                [sequelize.literal("CONCAT(`staff->person`.`first_name`, ' ', `staff->person`.`last_name`)"), 'fullName'],
+                [sequelize.literal('`staff->person`.`cnic`'), 'cnic'],
+                [sequelize.literal('`staff->person`.`phone`'), 'phone'],
+                [sequelize.literal('`staff->person`.`birth_date`'), 'birthDate'],
+                [sequelize.literal('`staff->person`.`gender`'), 'gender'],
+                [sequelize.literal('`staff`.`post`'), 'post'],
+                [sequelize.literal('`staff`.`join_date`'), 'joinDate'],
+                [sequelize.literal('`staff`.`salary`'), 'salary'],
+                [sequelize.literal('`staff`.`shift`'), 'shift'],
+                'specialty'
+            ],
+            nest: true
         });
 
-        const patients = await staff.getPatients();
-        createdDoctor.assignedPatients = patients.map(patient => patient.id);
-        const nurses = await doctor.getNurses();
-        createdDoctor.assignedNurses = nurses.map(nurse => nurse.id);
-        const wards = await staff.getWards();
-        createdDoctor.assignedWards = wards.map(ward => ward.id);
+        doctor = doctorInstance.get({ plain: true });
+        doctor.assignedWards = doctor.staff.wards;
+        doctor.assignedPatients = doctor.staff.patients;
+        doctor.assignedNurses = doctor.nurses;
+        delete doctor.staff;
+        delete doctor.nurses;
 
-        res.send(createdDoctor);
+        res.send(doctor);
     } catch(err) {
         await t.rollback();
         console.error(err);
@@ -311,59 +539,101 @@ router.post('/', expressPostValidator, async (req, res) => {
     }
 });
 router.get('/', async (req, res) => {
-    const doctorsRecords = await Person.findAll({
-            include: [
-                {
-                    model: Staff,
-                    attributes: [],
-                    include: [
-                        {
-                            model: Doctor,
-                            attributes: []
-                        }
-                    ]
-                }
-            ],
-            where: {
-                '$staff.doctor.id$': { [Op.not]: null }
-            },
-            attributes: { 
-                exclude: [
-                    'id',
-                    'firstName',
-                    'lastName',
-                    'created_at',
-                    'updated_at'
-                ],
+    const doctorInstance = await Doctor.findAll({
+        include: [
+            {
+                model: Staff,
                 include: [
-                    [sequelize.col('staff.doctor.id'), 'id'],
-                    [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                    'gender',
-                    'cnic',
-                    'phone',
-                    ['birth_date', 'birthDate'],
-                    [sequelize.col('staff.join_date'), 'joinDate'],
-                    [sequelize.col('staff.salary'), 'salary'],
-                    [sequelize.col('staff.shift'), 'shift'],
-                    [sequelize.col('staff.doctor.specialty'), 'specialty']
-                ]
+                    {
+                        model: Person,
+                        attributes: []
+                    },
+                    {
+                        model: Patient,
+                        through: { attributes: [] },
+                        include: [
+                            {
+                                model: Person,
+                                attributes: []
+                            }
+                        ],
+                        attributes: [
+                            'id',
+                            ['ward_id', 'wardId'],
+                            [sequelize.literal("CONCAT(`staff->patients->person`.`first_name`, ' ', `staff->patients->person`.`last_name`)"), 'fullName'],
+                            [sequelize.literal('`staff->patients->person`.`cnic`'), 'cnic'],
+                            [sequelize.literal('`staff->patients->person`.`phone`'), 'phone'],
+                            [sequelize.literal('`staff->patients->person`.`birth_date`'), 'birthDate'],
+                            [sequelize.literal('`staff->patients->person`.`gender`'), 'gender'],
+                            ['admit_date', 'admitDate'],
+                            ['release_date', 'releaseDate'],
+                            'sickness',
+                            'medication'
+                        ]
+                    },
+                    {
+                        model: Ward,
+                        attributes: [ 'id', 'name', 'capacity' ],
+                        through: { attributes: [] }
+                    }
+                ],
+                attributes: [
+                    'id'
+                ],
             },
-            raw: true
+            {
+                model: Nurse,
+                include: {
+                    model: Staff,
+                    include: {
+                        model: Person,
+                        attributes: []
+                    },
+                    attributes: []
+                },
+                attributes: [
+                    'id',
+                    ['staff_id', 'staffId'],
+                    [sequelize.literal("CONCAT(`nurses->staff->person`.`first_name`, ' ', `nurses->staff->person`.`last_name`)"), 'fullName'],
+                    [sequelize.literal('`nurses->staff->person`.`cnic`'), 'cnic'],
+                    [sequelize.literal('`nurses->staff->person`.`phone`'), 'phone'],
+                    [sequelize.literal('`nurses->staff->person`.`birth_date`'), 'birthDate'],
+                    [sequelize.literal('`nurses->staff->person`.`gender`'), 'gender'],
+                    [sequelize.literal('`nurses->staff`.`join_date`'), 'joinDate'],
+                    [sequelize.literal('`nurses->staff`.`salary`'), 'salary'],
+                    [sequelize.literal('`nurses->staff`.`shift`'), 'shift'],
+                ],
+                through: { attributes: [] }
+            },
+        ],
+        attributes: [
+            'id',
+            ['staff_id', 'staffId'],
+            [sequelize.literal("CONCAT(`staff->person`.`first_name`, ' ', `staff->person`.`last_name`)"), 'fullName'],
+            [sequelize.literal('`staff->person`.`cnic`'), 'cnic'],
+            [sequelize.literal('`staff->person`.`phone`'), 'phone'],
+            [sequelize.literal('`staff->person`.`birth_date`'), 'birthDate'],
+            [sequelize.literal('`staff->person`.`gender`'), 'gender'],
+            [sequelize.literal('`staff`.`post`'), 'post'],
+            [sequelize.literal('`staff`.`join_date`'), 'joinDate'],
+            [sequelize.literal('`staff`.`salary`'), 'salary'],
+            [sequelize.literal('`staff`.`shift`'), 'shift'],
+            'specialty'
+        ],
+        nest: true
     });
-    const doctorsList = await Promise.all(
-        doctorsRecords.map(async (doctors) => {
-            const doctor = await Doctor.findByPk(doctors.id);
-            const staff = await Staff.findByPk(doctor.staffId);
-            const wards = await staff.getWards();
-            const assignedWards = wards.map(ward => ward.id);
-            const nurses = await doctor.getNurses();
-            const assignedNurses = nurses.map(nurse => nurse.id);
-            const patients = await staff.getPatients();
-            const assignedPatients = patients.map(patient => patient.id);
-            return { ...doctors, assignedPatients, assignedNurses, assignedWards };
-        })
-    );
-    res.send(doctorsList);
+    
+    let doctor = doctorInstance.map(instance => instance.get({ plain: true }));
+    doctor = doctor.map(instance => {
+        instance.assignedWards = instance.staff.wards;
+        instance.assignedPatients = instance.staff.patients;
+        instance.assignedNurses = instance.nurses;
+        delete instance.staff;
+        delete instance.nurses;
+        return instance;
+    });
+
+    res.send(doctor);
 });
 
 module.exports = router;

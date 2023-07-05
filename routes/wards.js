@@ -22,7 +22,7 @@ router.put('/:id', expressPutValidator, async (req, res) => {
         capacity: obj.capacity || wardInstance.capacity,
     }, { where: { id: id } });
 
-    if (obj.assignedStaffs) await wardInstance.addStaffs(id, obj.assignedStaffs);
+    if (obj.assignedStaffs) await wardInstance.addAssignedStaffs(obj.assignedStaffs);
 
     wardInstance = await Ward.findByPk(id, {
         include: {
@@ -54,7 +54,6 @@ router.put('/:id', expressPutValidator, async (req, res) => {
                 'shift',
                 [sequelize.literal('specialty'), 'specialty'],
             ],
-            nest: false,
             through: { attributes: [] },
             as: 'assignedStaffs'
         },
@@ -114,7 +113,6 @@ router.delete('/:id', async (req, res) => {
                 'shift',
                 [sequelize.literal('specialty'), 'specialty'],
             ],
-            nest: false,
             through: { attributes: [] },
             as: 'assignedStaffs'
         },
@@ -177,7 +175,6 @@ router.get('/:id', async (req, res) => {
                 'shift',
                 [sequelize.literal('specialty'), 'specialty'],
             ],
-            nest: false,
             through: { attributes: [] },
             as: 'assignedStaffs'
         },
@@ -246,7 +243,6 @@ router.post('/', expressPostValidator, async (req, res) => {
                 'shift',
                 [sequelize.literal('specialty'), 'specialty'],
             ],
-            nest: false,
             through: { attributes: [] },
             as: 'assignedStaffs'
         },
@@ -304,7 +300,6 @@ router.get('/', async (req, res) => {
                 'shift',
                 [sequelize.literal('specialty'), 'specialty'],
             ],
-            nest: false,
             through: { attributes: [] },
             as: 'assignedStaffs'
         },
@@ -313,7 +308,6 @@ router.get('/', async (req, res) => {
     });
 
     let ward = wardInstance.map(instance => instance.get({ plain: true }));
-    console.log(ward);
     ward = ward.map(instance => {
         instance.assignedStaffs = instance.assignedStaffs.map(staff => {
             if(staff.post === 'Doctor') {
