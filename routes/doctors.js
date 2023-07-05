@@ -1,6 +1,5 @@
 const { Doctor, Staff, Person, Patient, Nurse, Ward, StaffWardAssignment, DoctorNurseAssignment, StaffPatientAssignment } = require('../startup/associations');
 const { postValidator, putValidator, expressPostValidator, expressPutValidator } = require('../validations/doctor');
-const { v4: uuidv4 } = require('uuid');
 
 const sequelize = require('../startup/database');
 
@@ -412,7 +411,6 @@ router.post('/', expressPostValidator, async (req, res) => {
         if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
 
         const person = await Person.create({ 
-            id: uuidv4(), 
             firstName: obj.firstName, 
             lastName: obj.lastName, 
             gender: obj.gender.toLowerCase(), 
@@ -421,7 +419,6 @@ router.post('/', expressPostValidator, async (req, res) => {
             birthDate: obj.birthDate
         }, { transaction: t });
         const staff = await Staff.create({
-            id: uuidv4(),
             personId: person.id,
             post: 'doctor',
             joinDate: obj.joinDate,
@@ -429,7 +426,6 @@ router.post('/', expressPostValidator, async (req, res) => {
             shift: obj.shift.toLowerCase()
         }, { transaction: t });
         let doctor = await Doctor.create({ 
-            id: uuidv4(), 
             staffId: staff.id,
             specialty: obj.specialty
         }, { transaction: t });

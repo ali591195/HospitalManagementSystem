@@ -1,6 +1,5 @@
 const { postValidator, putValidator, expressPostValidator, expressPutValidator } = require('../validations/ward');
 const { Ward, Staff, Person, Doctor, Nurse } = require('../startup/associations');
-const { v4: uuidv4 } = require('uuid');
 
 const sequelize = require('sequelize');
 
@@ -209,7 +208,7 @@ router.post('/', expressPostValidator, async (req, res) => {
     const error = postValidator(req.body);
     if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
 
-    let ward = await Ward.create({ id: uuidv4(), name: obj.name, capacity: obj.capacity });
+    let ward = await Ward.create({ name: obj.name, capacity: obj.capacity });
 
     if (obj.assignedStaffs) await ward.addAssignedStaffs(obj.assignedStaffs);
 

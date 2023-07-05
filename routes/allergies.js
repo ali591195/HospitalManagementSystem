@@ -1,6 +1,7 @@
 const { postValidator, putValidator, expressPostValidator, expressPutValidator } = require('../validations/allergy');
-const { Allergy } = require('../startup/associations');
-const { v4: uuidv4 } = require('uuid');
+const { Allergy, Patient, Person } = require('../startup/associations');
+
+const sequelize = require('../startup/database');
 
 const express = require('express');
 const router = express.Router();
@@ -9,7 +10,7 @@ router.put('/:id', expressPutValidator, async (req, res) => {
     const id = req.params.id;
     const obj  = req.body;
 
-    const allergy = await Allergy.findByPk(id);
+    let allergy = await Allergy.findByPk(id);
     if (!allergy) return res.status(404).send(`The id ${id} does not exist...`);
 
     try {
@@ -22,21 +23,32 @@ router.put('/:id', expressPutValidator, async (req, res) => {
 
         if (obj.patients) await allergy.addPatients(obj.patients);
         
-        const updatedAllergy = await Allergy.findByPk(allergy.id,
-            {
-                attributes: { 
-                    exclude: [
-                        'created_at',
-                        'updated_at'
-                    ]
+        const allergyInstance = await Allergy.findByPk(id, {
+            include: {
+                model: Patient,
+                include: {
+                    model: Person,
+                    attributes: []
                 },
-                raw: true
+                through: { attributes: [] },
+                attributes: [
+                    'id',
+                [sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'fullName'],
+                [sequelize.literal('cnic'), 'cnic'],
+                [sequelize.literal('phone'), 'phone'],
+                [sequelize.literal('birth_date'), 'birthDate'],
+                [sequelize.literal('gender'), 'gender'],
+                ['admit_date', 'admitDate'],
+                ['release_date', 'releaseDate'],
+                'sickness',
+                'medication'
+                ]
+            },
+            attributes: ['name'],
+            nest: true
         });
 
-        const patients = await allergy.getPatients();
-        updatedAllergy.patients = patients.map(patient => patient.id);
-
-        res.send(updatedAllergy);
+        res.send(allergyInstance);
     } catch(err) {
         console.error(err);
         res.send(err.message);
@@ -45,28 +57,36 @@ router.put('/:id', expressPutValidator, async (req, res) => {
 router.delete('/:id', async (req, res) => {
     const id = req.params.id;
 
-    const allergy = await Allergy.findByPk(id);
-    if (!allergy) return res.status(404).send(`The id ${id} does not exist...`);
+    const allergyInstance = await Allergy.findByPk(id, {
+        include: {
+            model: Patient,
+            include: {
+                model: Person,
+                attributes: []
+            },
+            through: { attributes: [] },
+            attributes: [
+                'id',
+            [sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'fullName'],
+            [sequelize.literal('cnic'), 'cnic'],
+            [sequelize.literal('phone'), 'phone'],
+            [sequelize.literal('birth_date'), 'birthDate'],
+            [sequelize.literal('gender'), 'gender'],
+            ['admit_date', 'admitDate'],
+            ['release_date', 'releaseDate'],
+            'sickness',
+            'medication'
+            ]
+        },
+        attributes: ['name'],
+        nest: true
+    });
+    if (!allergyInstance) return res.status(404).send(`The id ${id} does not exist...`);
 
     try {
-        const deletedAllergy = await Allergy.findByPk(allergy.id,
-            {
-                attributes: { 
-                    exclude: [
-                        'created_at',
-                        'updated_at'
-                    ]
-                },
-                raw: true
-        });
-
-        const patients = await allergy.getPatients();
-        deletedAllergy.patients = patients.map(patient => patient.id);
-
+        await Allergy.destroy({ where: { id: id } });
         
-        await Allergy.destroy({ where: { id: allergy.id } });
-        
-        res.send(deletedAllergy);
+        res.send(allergyInstance);
     }
     catch(err) {
         console.error(err);
@@ -76,24 +96,33 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id', async (req, res) => {
     const id = req.params.id;
 
-    const allergy = await Allergy.findByPk(id);
-    if (!allergy) return res.status(404).send(`The id ${id} does not exist...`);
-    
-    const allegyInstance = await Allergy.findByPk(allergy.id,
-        {
-            attributes: { 
-                exclude: [
-                    'created_at',
-                    'updated_at'
-                ]
+    const allergyInstance = await Allergy.findByPk(id, {
+        include: {
+            model: Patient,
+            include: {
+                model: Person,
+                attributes: []
             },
-            raw: true
+            through: { attributes: [] },
+            attributes: [
+                'id',
+            [sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'fullName'],
+            [sequelize.literal('cnic'), 'cnic'],
+            [sequelize.literal('phone'), 'phone'],
+            [sequelize.literal('birth_date'), 'birthDate'],
+            [sequelize.literal('gender'), 'gender'],
+            ['admit_date', 'admitDate'],
+            ['release_date', 'releaseDate'],
+            'sickness',
+            'medication'
+            ]
+        },
+        attributes: ['name'],
+        nest: true
     });
+    if (!allergyInstance) return res.status(404).send(`The id ${id} does not exist...`);
 
-    const patients = await allergy.getPatients();
-    allegyInstance.patients = patients.map(patient => patient.id);
-
-    res.send(allegyInstance);
+    res.send(allergyInstance);
 });
 
 router.post('/', expressPostValidator, async (req, res) => {
@@ -103,53 +132,70 @@ router.post('/', expressPostValidator, async (req, res) => {
         const error = postValidator(req.body);
         if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
 
-        const allergy = await Allergy.create({ 
-            id: uuidv4(), 
+        const allergy = await Allergy.create({  
             name: obj.name
         });
 
         if (obj.patients) await allergy.addPatients(obj.patients);
         
-        const createdAllergy = await Allergy.findByPk(allergy.id,
-            {
-                attributes: { 
-                    exclude: [
-                        'created_at',
-                        'updated_at'
-                    ]
+        const allergyInstance = await Allergy.findByPk(allergy.id, {
+            include: {
+                model: Patient,
+                include: {
+                    model: Person,
+                    attributes: []
                 },
-                raw: true
+                through: { attributes: [] },
+                attributes: [
+                    'id',
+                [sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'fullName'],
+                [sequelize.literal('cnic'), 'cnic'],
+                [sequelize.literal('phone'), 'phone'],
+                [sequelize.literal('birth_date'), 'birthDate'],
+                [sequelize.literal('gender'), 'gender'],
+                ['admit_date', 'admitDate'],
+                ['release_date', 'releaseDate'],
+                'sickness',
+                'medication'
+                ]
+            },
+            attributes: ['name'],
+            nest: true
         });
 
-        const patients = await allergy.getPatients();
-        createdAllergy.patients = patients.map(patient => patient.id);
-
-        res.send(createdAllergy);
+        res.send(allergyInstance);
     } catch(err) {
         console.error(err);
         res.send(err.message);
     }
 });
 router.get('/', async (req, res) => {
-    const allergyRecords = await Allergy.findAll(
-        {
-            attributes: { 
-                exclude: [
-                    'created_at',
-                    'updated_at'
-                ]
+    const allergyInstances = await Allergy.findAll({
+        include: {
+            model: Patient,
+            include: {
+                model: Person,
+                attributes: []
             },
-            raw: true
+            through: { attributes: [] },
+            attributes: [
+                'id',
+            [sequelize.literal("CONCAT(first_name, ' ', last_name)"), 'fullName'],
+            [sequelize.literal('cnic'), 'cnic'],
+            [sequelize.literal('phone'), 'phone'],
+            [sequelize.literal('birth_date'), 'birthDate'],
+            [sequelize.literal('gender'), 'gender'],
+            ['admit_date', 'admitDate'],
+            ['release_date', 'releaseDate'],
+            'sickness',
+            'medication'
+            ]
+        },
+        attributes: ['name'],
+        nest: true
     });
-    const allergyList = await Promise.all(
-        allergyRecords.map(async (allergies) => {
-            const allergy = await Allergy.findByPk(allergies.id);
-            const patientInstances = await allergy.getPatients();
-            const patients = patientInstances.map(patient => patient.id);
-            return { ...allergies, patients };
-        })
-    );
-    res.send(allergyList);
+
+    res.send(allergyInstances);
 });
 
 module.exports = router;

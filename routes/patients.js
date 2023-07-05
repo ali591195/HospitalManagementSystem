@@ -1,7 +1,5 @@
-const { Patient, Person, Allergy } = require('../startup/associations');
+const { Patient, Person, Allergy, Staff, Doctor, Nurse, Ward, PatientAllergyAssignment, StaffPatientAssignment } = require('../startup/associations');
 const { postValidator, putValidator, expressPostValidator, expressPutValidator } = require('../validations/patient');
-const { v4: uuidv4 } = require('uuid');
-const { Op } = require('sequelize');
 
 const sequelize = require('../startup/database');
 
@@ -12,86 +10,157 @@ router.put('/:id', expressPutValidator, async (req, res) => {
     const id = req.params.id;
     const obj  = req.body;
 
-    const patient = await Patient.findByPk(id);
+    let patient = await Patient.findByPk(id, {
+        include: {
+            model: Person,
+            attributes: []
+        },
+        attributes: [
+            [sequelize.literal('`person`.`id`'), 'personId'],
+            [sequelize.literal('`person`.`first_name`'), 'firstName'],
+            [sequelize.literal('`person`.`last_name`'), 'lastName'],
+            [sequelize.literal('`person`.`cnic`'), 'cnic'],
+            [sequelize.literal('`person`.`phone`'), 'phone'],
+            [sequelize.literal('`person`.`birth_date`'), 'birthDate'],
+            [sequelize.literal('`person`.`gender`'), 'gender'],
+            ['admit_date', 'admitDate'],
+            ['release_date', 'releaseDate'],
+            'sickness',
+            'medication'
+        ]
+
+    });
     if (!patient) return res.status(404).send(`The id ${id} does not exist...`);
+
+    patient = patient.get({ plain: true });
 
     const t = await sequelize.transaction();
     try {
-        const person = await Person.findByPk(patient.personId);
-        const gender = obj.gender || person.gender;
+        const gender = obj.gender || patient.gender;
 
         const error = putValidator(req.body);
         if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
 
         await Person.update({ 
-            firstName: obj.firstName || person.firstName, 
-            lastName: obj.lastName || person.lastName, 
+            firstName: obj.firstName || patient.firstName, 
+            lastName: obj.lastName || patient.lastName, 
             gender: gender.toLowerCase(), 
-            cnic: obj.cnic || person.cnic, 
-            phone: obj.phone || person.phone, 
-            birthDate: obj.birthDate || person.birthDate
-        }, { where: { id: person.id }, transaction: t });
+            cnic: obj.cnic || patient.cnic, 
+            phone: obj.phone || patient.phone, 
+            birthDate: obj.birthDate || patient.birthDate
+        }, { where: { id: patient.personId }, transaction: t });
         await Patient.update({
             wardId: obj.wardId || patient.wardId,
             admitDate: obj.admitDate || patient.admitDate,
             releaseDate: obj.releaseDate || patient.releaseDate,
             sickness: obj.sickness || patient.sickness,
             medication: obj.medication || patient.medication,
-        }, { where: { id: patient.id }, transaction: t });
+        }, { where: { id: id }, transaction: t });
 
         await t.commit();
 
         if (obj.allergies) {
-            const allergiesId = await Promise.all(
-                obj.allergies.map(async (allergyName) => {
-                    const allergyInstance = await Allergy.findOne({ where: { name: allergyName } })
-                    if(allergyInstance) return allergyInstance.id;
-                    const allergy = await Allergy.create({ id: uuidv4(), name: allergyName });
-                    return allergy.id
-            }))
-            await patient.addAllergies(allergiesId);
+            let allergies = await Promise.all(
+                Array.from(obj.allergies, async instance => {
+                  const [allergyInstance] = await Allergy.findOrCreate({
+                    where: { name: instance },
+                    defaults: { name: instance }
+                  });
+                  return allergyInstance.id;
+                })
+            );
+            allergies = allergies.map(instance => ({ allergyId: instance, patientId: id }))
+            await PatientAllergyAssignment.bulkCreate(allergies, { validate: true, ignoreDuplicates: true });
         }
-        if (obj.assignedStaffs) await patient.addStaffs(obj.assignedStaffs);
+        if (obj.assignedStaffs) {
+            const assignments = obj.assignedStaffs.map(instance => ({
+                staffId: instance,
+                patientId: id
+            }));
+            await StaffPatientAssignment.bulkCreate(assignments, { validate: true, ignoreDuplicates: true });
+        }
         
-        const updatedNurse = await Person.findByPk(person.id,
-            {
-                include: [
-                    {
-                        model: Patient,
-                        attributes: [],
-                    }
-                ],
-                attributes: { 
-                    exclude: [
-                        'id',
-                        'firstName',
-                        'lastName',
-                        'created_at',
-                        'updated_at'
-                    ],
+        const patientInstance = await Patient.findByPk(id, {
+            include: [
+                {
+                    model: Person,
+                    attributes: []
+                },
+                {
+                    model: Allergy,
+                    through: { attributes: [] },
+                    attributes: ['name']
+                },
+                {
+                    model: Staff,
                     include: [
-                        [sequelize.col('patient.id'), 'id'],
-                        [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                        'gender',
-                        'cnic',
-                        'phone',
-                        ['birth_date', 'birthDate'],
-                        [sequelize.col('patient.ward_id'), 'assignedWard'],
-                        [sequelize.col('patient.admit_date'), 'admitDate'],
-                        [sequelize.col('patient.release_date'), 'releaseDate'],
-                        [sequelize.col('patient.sickness'), 'sickness'],
-                        [sequelize.col('patient.medication'), 'medication'],
+                        {
+                            model: Person,
+                            attributes: []
+                        },
+                        {
+                            model: Doctor,
+                            attributes: ['id'],
+                        },
+                        {
+                            model: Nurse,
+                            attributes: ['id'],
+                        }
+                    ],
+                    through: { attributes: [] },
+                    attributes: [
+                        ['id', 'staffId'],
+                        [sequelize.literal("CONCAT(`staffs->person`.`first_name`, ' ', `staffs->person`.`last_name`)"), 'fullName'],
+                        [sequelize.literal('`staffs->person`.`cnic`'), 'cnic'],
+                        [sequelize.literal('`staffs->person`.`phone`'), 'phone'],
+                        [sequelize.literal('`staffs->person`.`birth_date`'), 'birthDate'],
+                        [sequelize.literal('`staffs->person`.`gender`'), 'gender'],
+                        'post',
+                        'joinDate',
+                        'salary',
+                        'shift',
+                        [sequelize.literal('specialty'), 'specialty'],
                     ]
                 },
-                raw: true
+                {
+                    model: Ward,
+                    attributes: [ 'id', 'name', 'capacity' ]
+                }
+            ],
+            attributes: [
+                'id',
+                [sequelize.literal("CONCAT(`person`.`first_name`, ' ', `person`.`last_name`)"), 'fullName'],
+                [sequelize.literal('`person`.`cnic`'), 'cnic'],
+                [sequelize.literal('`person`.`phone`'), 'phone'],
+                [sequelize.literal('`person`.`birth_date`'), 'birthDate'],
+                [sequelize.literal('`person`.`gender`'), 'gender'],
+                ['admit_date', 'admitDate'],
+                ['release_date', 'releaseDate'],
+                'sickness',
+                'medication'
+            ],
+            nest: true
         });
 
-        const allergies = await patient.getAllergies();
-        updatedNurse.allergies = allergies.map(staff => staff.id);
-        const staffs = await patient.getStaffs();
-        updatedNurse.assignedStaffs = staffs.map(staff => staff.id);
+        patient = patientInstance.get({ plain: true });
+        patient.allergies = patient.allergies.map(instance => instance.name);
+        patient.assignedStaffs = patient.staffs.map(instance => {
+            let id
+            if(instance.post === 'Doctor') {
+                id = instance.doctor.id;
+                delete instance.doctor;
+                delete instance.nurse;
+            } else if (instance.post === 'Nurse') {
+                id = instance.nurse.id;
+                delete instance.doctor;
+                delete instance.specialty;
+                delete instance.nurse;
+            }
+            return { id, ...instance };
+        });
+        delete patient.staffs
 
-        res.send(updatedNurse);
+        res.send(patient);
     } catch(err) {
         await t.rollback();
         console.error(err);
@@ -101,54 +170,95 @@ router.put('/:id', expressPutValidator, async (req, res) => {
 router.delete('/:id', async (req, res) => {
     const id = req.params.id;
 
-    const patient = await Patient.findByPk(id);
-    if (!patient) return res.status(404).send(`The id ${id} does not exist...`);
+    const patientInstance = await Patient.findByPk(id, {
+        include: [
+            {
+                model: Person,
+                attributes: []
+            },
+            {
+                model: Allergy,
+                through: { attributes: [] },
+                attributes: ['name']
+            },
+            {
+                model: Staff,
+                include: [
+                    {
+                        model: Person,
+                        attributes: []
+                    },
+                    {
+                        model: Doctor,
+                        attributes: ['id'],
+                    },
+                    {
+                        model: Nurse,
+                        attributes: ['id'],
+                    }
+                ],
+                through: { attributes: [] },
+                attributes: [
+                    ['id', 'staffId'],
+                    [sequelize.literal("CONCAT(`staffs->person`.`first_name`, ' ', `staffs->person`.`last_name`)"), 'fullName'],
+                    [sequelize.literal('`staffs->person`.`cnic`'), 'cnic'],
+                    [sequelize.literal('`staffs->person`.`phone`'), 'phone'],
+                    [sequelize.literal('`staffs->person`.`birth_date`'), 'birthDate'],
+                    [sequelize.literal('`staffs->person`.`gender`'), 'gender'],
+                    'post',
+                    'joinDate',
+                    'salary',
+                    'shift',
+                    [sequelize.literal('specialty'), 'specialty'],
+                ]
+            },
+            {
+                model: Ward,
+                attributes: [ 'id', 'name', 'capacity' ]
+            }
+        ],
+        attributes: [
+            'id',
+            [sequelize.literal('`person`.`id`'), 'personId'],
+            [sequelize.literal("CONCAT(`person`.`first_name`, ' ', `person`.`last_name`)"), 'fullName'],
+            [sequelize.literal('`person`.`cnic`'), 'cnic'],
+            [sequelize.literal('`person`.`phone`'), 'phone'],
+            [sequelize.literal('`person`.`birth_date`'), 'birthDate'],
+            [sequelize.literal('`person`.`gender`'), 'gender'],
+            ['admit_date', 'admitDate'],
+            ['release_date', 'releaseDate'],
+            'sickness',
+            'medication'
+        ],
+        nest: true
+    });
+    if (!patientInstance) return res.status(404).send(`The id ${id} does not exist...`);
+
+    const patient = patientInstance.get({ plain: true });
+    patient.allergies = patient.allergies.map(instance => instance.name);
+    patient.assignedStaffs = patient.staffs.map(instance => {
+        let id
+        if(instance.post === 'Doctor') {
+            id = instance.doctor.id;
+            delete instance.doctor;
+            delete instance.nurse;
+        } else if (instance.post === 'Nurse') {
+            id = instance.nurse.id;
+            delete instance.doctor;
+            delete instance.specialty;
+            delete instance.nurse;
+        }
+        return { id, ...instance };
+    });
+    delete patient.staffs
 
     const t = await sequelize.transaction();
     try {
-        const deletedPatient = await Person.findByPk(patient.personId,
-            {
-                include: [
-                    {
-                        model: Patient,
-                        attributes: [],
-                    }
-                ],
-                attributes: { 
-                    exclude: [
-                        'id',
-                        'firstName',
-                        'lastName',
-                        'created_at',
-                        'updated_at'
-                    ],
-                    include: [
-                        [sequelize.col('patient.id'), 'id'],
-                        [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                        'gender',
-                        'cnic',
-                        'phone',
-                        ['birth_date', 'birthDate'],
-                        [sequelize.col('patient.ward_id'), 'assignedWard'],
-                        [sequelize.col('patient.admit_date'), 'admitDate'],
-                        [sequelize.col('patient.release_date'), 'releaseDate'],
-                        [sequelize.col('patient.sickness'), 'sickness'],
-                        [sequelize.col('patient.medication'), 'medication'],
-                    ]
-                },
-                raw: true
-        });
-
-        const allergies = await patient.getAllergies();
-        deletedPatient.allergies = allergies.map(staff => staff.id);
-        const staffs = await patient.getStaffs();
-        deletedPatient.assignedStaffs = staffs.map(staff => staff.id);
-
         await Patient.destroy({ where: { id: id}, transaction: t });
         await Person.destroy({ where: { id: patient.personId }, transaction: t });
         await t.commit();
         
-        res.send(deletedPatient);
+        res.send(patient);
     }
     catch(err) {
         await t.rollback();
@@ -159,50 +269,88 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id', async (req, res) => {
     const id = req.params.id;
 
-    const patient = await Patient.findByPk(id);
-    if (!patient) return res.status(404).send(`The id ${id} does not exist...`);
-
-    const person = await Person.findByPk(patient.personId);
-    
-    const patientInstance = await Person.findByPk(person.id,
-        {
-            include: [
-                {
-                    model: Patient,
-                    attributes: [],
-                }
-            ],
-            attributes: { 
-                exclude: [
-                    'id',
-                    'firstName',
-                    'lastName',
-                    'created_at',
-                    'updated_at'
-                ],
+    const patientInstance = await Patient.findByPk(id, {
+        include: [
+            {
+                model: Person,
+                attributes: []
+            },
+            {
+                model: Allergy,
+                through: { attributes: [] },
+                attributes: ['name']
+            },
+            {
+                model: Staff,
                 include: [
-                    [sequelize.col('patient.id'), 'id'],
-                    [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                    'gender',
-                    'cnic',
-                    'phone',
-                    ['birth_date', 'birthDate'],
-                    [sequelize.col('patient.ward_id'), 'assignedWard'],
-                    [sequelize.col('patient.admit_date'), 'admitDate'],
-                    [sequelize.col('patient.release_date'), 'releaseDate'],
-                    [sequelize.col('patient.sickness'), 'sickness'],
-                    [sequelize.col('patient.medication'), 'medication'],
+                    {
+                        model: Person,
+                        attributes: []
+                    },
+                    {
+                        model: Doctor,
+                        attributes: ['id'],
+                    },
+                    {
+                        model: Nurse,
+                        attributes: ['id'],
+                    }
+                ],
+                through: { attributes: [] },
+                attributes: [
+                    ['id', 'staffId'],
+                    [sequelize.literal("CONCAT(`staffs->person`.`first_name`, ' ', `staffs->person`.`last_name`)"), 'fullName'],
+                    [sequelize.literal('`staffs->person`.`cnic`'), 'cnic'],
+                    [sequelize.literal('`staffs->person`.`phone`'), 'phone'],
+                    [sequelize.literal('`staffs->person`.`birth_date`'), 'birthDate'],
+                    [sequelize.literal('`staffs->person`.`gender`'), 'gender'],
+                    'post',
+                    'joinDate',
+                    'salary',
+                    'shift',
+                    [sequelize.literal('specialty'), 'specialty'],
                 ]
             },
-            raw: true
+            {
+                model: Ward,
+                attributes: [ 'id', 'name', 'capacity' ]
+            }
+        ],
+        attributes: [
+            'id',
+            [sequelize.literal("CONCAT(`person`.`first_name`, ' ', `person`.`last_name`)"), 'fullName'],
+            [sequelize.literal('`person`.`cnic`'), 'cnic'],
+            [sequelize.literal('`person`.`phone`'), 'phone'],
+            [sequelize.literal('`person`.`birth_date`'), 'birthDate'],
+            [sequelize.literal('`person`.`gender`'), 'gender'],
+            ['admit_date', 'admitDate'],
+            ['release_date', 'releaseDate'],
+            'sickness',
+            'medication'
+        ],
+        nest: true
     });
+    if (!patientInstance) return res.status(404).send(`The id ${id} does not exist...`);
 
-    const allergies = await patient.getAllergies();
-    patientInstance.allergies = allergies.map(staff => staff.id);
-    const staffs = await patient.getStaffs();
-    patientInstance.assignedStaffs = staffs.map(staff => staff.id);
+    const patient = patientInstance.get({ plain: true });
+    patient.allergies = patient.allergies.map(instance => instance.name);
+    patient.assignedStaffs = patient.staffs.map(instance => {
+        let id
+        if(instance.post === 'Doctor') {
+            id = instance.doctor.id;
+            delete instance.doctor;
+            delete instance.nurse;
+        } else if (instance.post === 'Nurse') {
+            id = instance.nurse.id;
+            delete instance.doctor;
+            delete instance.specialty;
+            delete instance.nurse;
+        }
+        return { id, ...instance };
+    });
+    delete patient.staffs
 
-    res.send(patientInstance);
+    res.send(patient);
 });
 
 router.post('/', expressPostValidator, async (req, res) => {
@@ -215,7 +363,6 @@ router.post('/', expressPostValidator, async (req, res) => {
         if(error) return res.status(400).send(`Encounter the following error: ${error.details[0].message}`);
 
         const person = await Person.create({ 
-            id: uuidv4(), 
             firstName: obj.firstName, 
             lastName: obj.lastName, 
             gender: obj.gender.toLowerCase(), 
@@ -223,8 +370,7 @@ router.post('/', expressPostValidator, async (req, res) => {
             phone: obj.phone, 
             birthDate: obj.birthDate
         }, { transaction: t });
-        const patient = await Patient.create({ 
-            id: uuidv4(), 
+        let patient = await Patient.create({ 
             personId: person.id,
             wardId: obj.wardId,
             admitDate: obj.admitDate,
@@ -236,56 +382,101 @@ router.post('/', expressPostValidator, async (req, res) => {
         await t.commit();
 
         if (obj.allergies) {
-            const allergiesId = await Promise.all(
-                obj.allergies.map(async (allergyName) => {
-                    const allergyInstance = await Allergy.findOne({ where: { name: allergyName } })
-                    if(allergyInstance) return allergyInstance.id;
-                    const allergy = await Allergy.create({ id: uuidv4(), name: allergyName });
-                    return allergy.id
-            }))
-            await patient.addAllergies(allergiesId);
+            const allergies = await Promise.all(
+                Array.from(obj.allergies, async instance => {
+                  const [allergyInstance] = await Allergy.findOrCreate({
+                    where: { name: instance },
+                    defaults: { name: instance }
+                  });
+                  return allergyInstance.id;
+                })
+            );
+            await patient.addAllergies(allergies);
         }
         if (obj.assignedStaffs) await patient.addStaffs(obj.assignedStaffs);
          
-        const createdPatient = await Person.findByPk(person.id,
-            {
-                include: [
-                    {
-                        model: Patient,
-                        attributes: [],
-                    }
-                ],
-                attributes: { 
-                    exclude: [
-                        'id',
-                        'firstName',
-                        'lastName',
-                        'created_at',
-                        'updated_at'
-                    ],
+        const patientInstance = await Patient.findByPk(patient.id, {
+            include: [
+                {
+                    model: Person,
+                    attributes: []
+                },
+                {
+                    model: Allergy,
+                    through: { attributes: [] },
+                    attributes: ['name']
+                },
+                {
+                    model: Staff,
                     include: [
-                        [sequelize.col('patient.id'), 'id'],
-                        [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                        'gender',
-                        'cnic',
-                        'phone',
-                        ['birth_date', 'birthDate'],
-                        [sequelize.col('patient.ward_id'), 'assignedWard'],
-                        [sequelize.col('patient.admit_date'), 'admitDate'],
-                        [sequelize.col('patient.release_date'), 'releaseDate'],
-                        [sequelize.col('patient.sickness'), 'sickness'],
-                        [sequelize.col('patient.medication'), 'medication'],
+                        {
+                            model: Person,
+                            attributes: []
+                        },
+                        {
+                            model: Doctor,
+                            attributes: ['id'],
+                        },
+                        {
+                            model: Nurse,
+                            attributes: ['id'],
+                        }
+                    ],
+                    through: { attributes: [] },
+                    attributes: [
+                        ['id', 'staffId'],
+                        [sequelize.literal("CONCAT(`staffs->person`.`first_name`, ' ', `staffs->person`.`last_name`)"), 'fullName'],
+                        [sequelize.literal('`staffs->person`.`cnic`'), 'cnic'],
+                        [sequelize.literal('`staffs->person`.`phone`'), 'phone'],
+                        [sequelize.literal('`staffs->person`.`birth_date`'), 'birthDate'],
+                        [sequelize.literal('`staffs->person`.`gender`'), 'gender'],
+                        'post',
+                        'joinDate',
+                        'salary',
+                        'shift',
+                        [sequelize.literal('specialty'), 'specialty'],
                     ]
                 },
-                raw: true
+                {
+                    model: Ward,
+                    attributes: [ 'id', 'name', 'capacity' ]
+                }
+            ],
+            attributes: [
+                'id',
+                [sequelize.literal("CONCAT(`person`.`first_name`, ' ', `person`.`last_name`)"), 'fullName'],
+                [sequelize.literal('`person`.`cnic`'), 'cnic'],
+                [sequelize.literal('`person`.`phone`'), 'phone'],
+                [sequelize.literal('`person`.`birth_date`'), 'birthDate'],
+                [sequelize.literal('`person`.`gender`'), 'gender'],
+                ['admit_date', 'admitDate'],
+                ['release_date', 'releaseDate'],
+                'sickness',
+                'medication'
+            ],
+            nest: true
         });
 
-        const allergies = await patient.getAllergies();
-        createdPatient.allergies = allergies.map(staff => staff.id);
-        const staffs = await patient.getStaffs();
-        createdPatient.assignedStaffs = staffs.map(staff => staff.id);
+        patient = patientInstance.get({ plain: true });
+        patient.allergies = patient.allergies.map(instance => instance.name);
+        patient.assignedStaffs = patient.staffs.map(instance => {
+            let id
+            if(instance.post === 'Doctor') {
+                id = instance.doctor.id;
+                delete instance.doctor;
+                delete instance.nurse;
+            } else if (instance.post === 'Nurse') {
+                id = instance.nurse.id;
+                delete instance.doctor;
+                delete instance.specialty;
+                delete instance.nurse;
+            }
+            return { id, ...instance };
+        });
+        delete patient.staffs
 
-        res.send(createdPatient);
+        res.send(patient);
+        
     } catch(err) {
         await t.rollback();
         console.error(err);
@@ -293,51 +484,90 @@ router.post('/', expressPostValidator, async (req, res) => {
     }
 });
 router.get('/', async (req, res) => {
-    const patientRecords = await Person.findAll({
+    const patientInstance = await Patient.findAll({
         include: [
             {
-                model: Patient,
-                attributes: [],
-            }
-        ],
-            where: {
-                '$patient.id$': { [Op.not]: null }
+                model: Person,
+                attributes: []
             },
-            attributes: { 
-                exclude: [
-                    'id',
-                    'firstName',
-                    'lastName',
-                    'created_at',
-                    'updated_at'
-                ],
+            {
+                model: Allergy,
+                through: { attributes: [] },
+                attributes: ['name']
+            },
+            {
+                model: Staff,
                 include: [
-                    [sequelize.col('patient.id'), 'id'],
-                    [sequelize.literal(`CONCAT(first_name, ' ', last_name)`), 'fullName'],
-                    'gender',
-                    'cnic',
-                    'phone',
-                    ['birth_date', 'birthDate'],
-                    [sequelize.col('patient.ward_id'), 'assignedWard'],
-                    [sequelize.col('patient.admit_date'), 'admitDate'],
-                    [sequelize.col('patient.release_date'), 'releaseDate'],
-                    [sequelize.col('patient.sickness'), 'sickness'],
-                    [sequelize.col('patient.medication'), 'medication'],
+                    {
+                        model: Person,
+                        attributes: []
+                    },
+                    {
+                        model: Doctor,
+                        attributes: ['id'],
+                    },
+                    {
+                        model: Nurse,
+                        attributes: ['id'],
+                    }
+                ],
+                through: { attributes: [] },
+                attributes: [
+                    ['id', 'staffId'],
+                    [sequelize.literal("CONCAT(`staffs->person`.`first_name`, ' ', `staffs->person`.`last_name`)"), 'fullName'],
+                    [sequelize.literal('`staffs->person`.`cnic`'), 'cnic'],
+                    [sequelize.literal('`staffs->person`.`phone`'), 'phone'],
+                    [sequelize.literal('`staffs->person`.`birth_date`'), 'birthDate'],
+                    [sequelize.literal('`staffs->person`.`gender`'), 'gender'],
+                    'post',
+                    'joinDate',
+                    'salary',
+                    'shift',
+                    [sequelize.literal('specialty'), 'specialty'],
                 ]
             },
-            raw: true
+            {
+                model: Ward,
+                attributes: [ 'id', 'name', 'capacity' ]
+            }
+        ],
+        attributes: [
+            'id',
+            [sequelize.literal("CONCAT(`person`.`first_name`, ' ', `person`.`last_name`)"), 'fullName'],
+            [sequelize.literal('`person`.`cnic`'), 'cnic'],
+            [sequelize.literal('`person`.`phone`'), 'phone'],
+            [sequelize.literal('`person`.`birth_date`'), 'birthDate'],
+            [sequelize.literal('`person`.`gender`'), 'gender'],
+            ['admit_date', 'admitDate'],
+            ['release_date', 'releaseDate'],
+            'sickness',
+            'medication'
+        ],
+        nest: true
     });
-    const patientsList = await Promise.all(
-        patientRecords.map(async (patients) => {
-            const patient = await Patient.findByPk(patients.id);
-            const staffs = await patient.getStaffs();
-            const assignedStaffs = staffs.map(staff => staff.id);
-            const allergiesInstances = await patient.getAllergies();
-            const allergies = allergiesInstances.map(allergy => allergy.id);
-            return { ...patients, allergies, assignedStaffs };
-        })
-    );
-    res.send(patientsList);
+
+    let patient = patientInstance.map(instance => instance.get({ plain: true }));
+    patient = patient.map(instance => {
+        instance.allergies = instance.allergies.map(allergyInstance => allergyInstance.name);
+        instance.assignedStaffs = instance.staffs.map(staffInstance => {
+            let id
+            if(staffInstance.post === 'Doctor') {
+                id = staffInstance.doctor.id;
+                delete staffInstance.doctor;
+                delete staffInstance.nurse;
+            } else if (staffInstance.post === 'Nurse') {
+                id = staffInstance.nurse.id;
+                delete staffInstance.doctor;
+                delete staffInstance.specialty;
+                delete staffInstance.nurse;
+            }
+            return { id, ...staffInstance };
+        });
+        delete instance.staffs
+        return instance;
+    });
+
+    res.send(patient);
 });
 
 module.exports = router;

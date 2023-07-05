@@ -1,9 +1,12 @@
 const { DataTypes } = require('sequelize');
+const { v4: uuidv4 } = require('uuid');
+
 const sequelize = require('../startup/database');
 
 module.exports = sequelize.define('allergy', {
     id: {
         type: DataTypes.UUID,
+        defaultValue: () => uuidv4(),
         primaryKey: true,
         allowNull: false,
         unique: true,
@@ -15,6 +18,7 @@ module.exports = sequelize.define('allergy', {
     },
     name: {
         type: DataTypes.STRING(255),
+        unique: true,
         allowNull: false,
         validate: {
             notNull: true,
